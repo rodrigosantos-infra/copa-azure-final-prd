@@ -226,6 +226,7 @@ Mesmo padrão `<tipo>-<ambiente>-<carga>-<região>-<instância>` da fase VM. **U
 | Azure SQL Database | `FIFA2026Tickets` | — | mesmo nome do banco da VM |
 | Database Migration Service | `dms-prd-tk-cin-001` | Central India | criado pela extension na Fase 5 |
 | Projeto Azure Migrate (em branco) | `migr-prd-tk-cin-001` | Geography mais próxima | **opcional** — só se rodar o assistant para o assessment; sem appliance/discovery. Publicação real é por zip deploy |
+| Key Vault | `kv-prd-tk-cin-001` | Central India | **nome global**; guarda o certificado das VMs (.pfx) p/ o domínio customizado (Fase 4.5) |
 
 #### 1.2 Ordem da migração (e por quê)
 
@@ -487,11 +488,12 @@ Na VM, você marcou **"Enable proxy"** no ARR (um checkbox). **No App Service n�
 > 🎯 **Antes de fixar o CORS**, deixamos o front acessível pela **mesma URL** que você já usava nas VMs, **reaproveitando o certificado** emitido lá — **sem gerar um novo**. O cert é importado para um **Key Vault** e o Web App o referencia.
 
 1. **Exportar o cert da etapa das VMs como `.pfx`** (com a chave privada + senha), de onde ele foi instalado/gerado na fase VM. Ex. na VM: `certlm.msc` → **Personal → Certificates** → o cert do seu domínio → **All Tasks → Export** → **Yes, export the private key** → formato **.pfx** → defina uma senha.
-2. **Importar o `.pfx` num Key Vault.** Crie/escolha um Key Vault (ex.: `kv-prd-tk-cin-001`) → **Certificates → Generate/Import → Import** → upload do `.pfx` + a senha.
-3. **Importar o certificado no Web App a partir do Key Vault:** `app-prd-tk-fend-cin-001` → **Settings → Certificates → Bring your own certificates (.pfx) → Import from Key Vault** → selecione o vault e o certificado. _(Se solicitado, autorize o App Service a ler o Key Vault — access policy/RBAC com permissão de **get** em certificates/secrets.)_
-4. **Apontar o DNS** do domínio para o Web App: na sua zona DNS, **CNAME** `www` → `app-prd-tk-fend-cin-001.azurewebsites.net` e o **TXT** `asuid.www` = o *Custom Domain Verification ID* (Portal → o Web App → **Custom domains** mostra o ID).
-5. **Adicionar o domínio customizado:** **Custom domains → + Add custom domain** → `www.<seu-domínio>` → **Validate** → **Add**.
-6. **Binding TLS:** no domínio recém-adicionado → **Add binding** → selecione o **certificado importado do Key Vault** → **SNI SSL**.
+2. **Criar o Key Vault** (se ainda não tiver): Portal → busca **Key vaults** → **+ Create** → **Resource group:** `rg-prd-tik-paas-cin-001` · **Name:** `kv-prd-tk-cin-001` (**nome global** — se aparecer "já em uso", acrescente suas iniciais, ex.: `kv-prd-tk-rss-cin-001`) · **Region:** **Central India** · **Pricing tier:** **Standard** → na aba **Access configuration**, deixe **Azure role-based access control (RBAC)** → **Review + create** → **Create**.
+3. **Importar o `.pfx` no Key Vault:** abra o vault → **Objects → Certificates → Generate/Import → Import** → dê um nome (ex.: `cert-tftec-dominio`), faça **upload do `.pfx`** e informe a **senha** definida no passo 1.
+4. **Importar o certificado no Web App a partir do Key Vault:** `app-prd-tk-fend-cin-001` → **Settings → Certificates → Bring your own certificates (.pfx) → Import from Key Vault** → selecione o vault e o certificado. _(Se solicitado, autorize o App Service a ler o vault — atribua a role **Key Vault Certificate User** (ou **Secrets User**) à identidade do App Service, ou uma access policy de **get** em certificates/secrets.)_
+5. **Apontar o DNS** do domínio para o Web App: na sua zona DNS, **CNAME** `www` → `app-prd-tk-fend-cin-001.azurewebsites.net` e o **TXT** `asuid.www` = o *Custom Domain Verification ID* (Portal → o Web App → **Custom domains** mostra o ID).
+6. **Adicionar o domínio customizado:** **Custom domains → + Add custom domain** → `www.<seu-domínio>` → **Validate** → **Add**.
+7. **Binding TLS:** no domínio recém-adicionado → **Add binding** → selecione o **certificado importado do Key Vault** → **SNI SSL**.
 
 > ⚠️ **Timing do cutover de DNS:** ao mudar o CNAME para o Web App, o domínio **deixa de apontar para a `vm-fend`**. Garanta que o front no Web App já está **publicado (4.2)** e com o **proxy ativo (4.4)** antes de cortar o DNS — assim o usuário não fica sem app nem sem cadeado.
 
